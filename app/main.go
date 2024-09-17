@@ -45,22 +45,6 @@ var (
 		})
 )
 
-
-
-// var httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-//     Name: "myapp_http_duration_seconds",
-//     Help: "Duration of HTTP requests.",
-//   }, []string{"path"})
-
-
-// var randomRequestCounter = prometheus.NewCounter(
-//    prometheus.CounterOpts{
-//        Name: "random_request_counter",
-//        Help: "No of request handled by Random Response handler",
-//    },
-// )
-
-
 func main() {
 
 	histogramVec := prometheus.NewHistogramVec(prometheus.HistogramOpts{

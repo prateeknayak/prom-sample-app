@@ -24,7 +24,7 @@ services:
   sample-app:
     image: sample-app
     container_name: sample-app
-    build: ./
+    build: ../app/
     ports:
       - 8080:8080
 volumes:

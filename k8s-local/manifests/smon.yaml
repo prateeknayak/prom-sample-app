@@ -1,0 +1,44 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: carts-service
+  namespace: app
+  labels:
+    release: otel
+spec:
+  selector:
+    matchLabels:
+      app: cart
+  endpoints:
+    - interval: 10s
+      path: /metrics
+      port: http
+      scheme: http
+  jobLabel: app
+  sampleLimit: 1000
+  namespaceSelector:
+    matchNames:
+      - app
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: user-service
+  namespace: app
+  labels:
+    release: otel
+spec:
+  selector:
+    matchLabels:
+      app: user
+  endpoints:
+    - interval: 10s
+      path: /metrics
+      port: http
+      scheme: http
+  jobLabel: app
+  sampleLimit: 1000
+  namespaceSelector:
+    matchNames:
+      - app

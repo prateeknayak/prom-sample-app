@@ -1,0 +1,18 @@
+existingObjstoreSecret: thanos-objstore
+
+query:
+  dnsDiscovery:
+    sidecarsService: "prometheus-server"
+    sidecarsNamespace: "o11y"
+
+compactor:
+  enabled: true
+  retentionResolutionRaw: 90d
+  retentionResolution5m: 180d
+  retentionResolution1h: 2y
+
+storegateway:
+  enabled: true
+
+metrics:
+  enabled: true

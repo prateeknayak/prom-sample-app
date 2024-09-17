@@ -1,0 +1,36 @@
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  name: sloth-slo-cart
+  namespace: app
+  labels:
+    release: prometheus
+spec:
+  service: "cart"
+  labels:
+    owner: "myteam"
+    repo: "myorg/cart"
+    tier: "2"
+    release: prometheus
+  slos:
+    - name: "requests-availability"
+      objective: 99.9
+      description: "Common SLO based on availability for HTTP request responses."
+      sli:
+        events:
+          errorQuery: sum(rate(http_request_duration_seconds_count{job="myservice",code=~"(5..|429)"}[{{.window}}]))
+          totalQuery: sum(rate(http_request_duration_seconds_count{job="myservice"}[{{.window}}]))
+      alerting:
+        name: MyServiceHighErrorRate
+        labels:
+          category: "availability"
+        annotations:
+          summary: "High error rate on 'myservice' requests responses"
+        pageAlert:
+          labels:
+            severity: pageteam
+            routing_key: myteam
+        ticketAlert:
+          labels:
+            severity: "slack"
+            slack_channel: "#alerts-myteam"

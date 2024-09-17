@@ -1,0 +1,7 @@
+type: S3
+config:
+  endpoint: "minio:9000"
+  bucket: "thanos"
+  access_key: "admin"
+  secret_key: "ENxHkefnEz" #this is on my local so doesn't really matter but please don't check in your password
+  insecure: true
