@@ -22,9 +22,9 @@ services:
     volumes:
       - ./grafana:/etc/grafana/provisioning/datasources
   sample-app:
+    build: ../app/
     image: sample-app
     container_name: sample-app
-    build: ../app/
     ports:
       - 8080:8080
 volumes:

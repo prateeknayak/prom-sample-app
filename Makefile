@@ -1,3 +1,11 @@
+.PHONY: prom-up
+prom-up:
+	docker compose -f compose/docker-compose.yaml up 
+
+.PHONY: prom-down
+prom-down:
+	docker compose -f compose/docker-compose.yaml down
+
 .PHONY: k8s-local
 k8s-local:
 	kind create cluster --config k8s-local/cluster.yaml
