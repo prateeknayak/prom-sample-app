@@ -41,3 +41,9 @@ scrape_configs:
     #   - source_labels: ["__name__"]
     #     regex: "^go_.*"
     #     action: drop
+  - job_name: "tempo"
+    static_configs:
+      - targets: ["tempo:3200"]
+# Load rules once and periodically evaluate them according to the global 'evaluation_interval'.
+rule_files:
+  - "/etc/prometheus/rules/*.yaml"
