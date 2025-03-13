@@ -25,6 +25,22 @@ scrape_configs:
       - source_labels: ["__name__"]
         regex: "^go_.*"
         action: drop
+  - job_name: pushgateway
+    honor_timestamps: true
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets:
+          - pushgateway:9091
+    metric_relabel_configs:
+      # - source_labels: ["__name__"]
+      #   regex: "prom.*_.*"
+      #   action: keep
+      - source_labels: ["__name__"]
+        regex: "^go_.*"
+        action: drop
   - job_name: sample-app
     honor_timestamps: true
     scrape_interval: 15s

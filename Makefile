@@ -1,6 +1,6 @@
 .PHONY: prom-up
 prom-up:
-	docker compose -f compose/docker-compose.yaml up 
+	docker compose -f compose/docker-compose.yaml up -d
 
 .PHONY: prom-down
 prom-down:

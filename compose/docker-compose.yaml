@@ -14,6 +14,16 @@ services:
       - ./prometheus:/etc/prometheus
       - ./sloth/rules:/etc/prometheus/rules
       - prom_data:/prometheus
+
+  pushgateway:
+    image: prom/pushgateway
+    container_name: pushgateway
+    restart: unless-stopped
+    expose:
+      - 9091
+    ports:
+      - "9091:9091"
+
   grafana:
     image: grafana/grafana
     container_name: grafana

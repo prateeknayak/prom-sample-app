@@ -1,18 +1,21 @@
 package main
 
 import (
+	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"math/rand"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/client_golang/prometheus/push"
 )
 
 
@@ -77,6 +80,8 @@ func (rec *statusRecorder) WriteHeader(code int) {
 }
 func main() {
 	
+	port := flag.String("port", "8080", "Port to run the HTTP server on")
+	flag.Parse()
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(counter)
 	reg.MustRegister(gauge)
@@ -98,67 +103,86 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", randomResponse)
 	mux.HandleFunc("/e500", error500)
+	mux.HandleFunc("/push", pushHandler)
 	mux.Handle("/metrics", handler)
 
 	promHandler := prometheusMiddleware(mux)
-
-
-	port := os.Getenv("PORT")
-    if port == "" {
-        port = "8080"
-    }
-	log.Println("Starting HTTP server on port", port)
+	log.Println("Starting HTTP server on port", *port)
 
 	// log.Fatalf("received error while serving. %v", http.ListenAndServe(":8090", mux))
-	if err := http.ListenAndServe(":"+port, promHandler); err != nil {
+	if err := http.ListenAndServe(":"+*port, promHandler); err != nil {
         log.Fatal("Server failed to start:", err)
     }
 }
 
 func randomResponse(w http.ResponseWriter, req *http.Request) {
-
-	resp := randomiseResponseCode(&http.Response{})
-	resp.Body = io.NopCloser(strings.NewReader("random response from the server"))
-
-	w.WriteHeader(resp.StatusCode)
-	body, _ := io.ReadAll(resp.Body)
-	_, err := w.Write(body)
-	if err != nil {
-		fmt.Printf("error while sending respone %v", err)
-	}
-
-	_ = resp.Body.Close()
-
+	// log.Println(("invoking root endpoing and returning random response"))
+	resp := &http.Response{}
+	resp.StatusCode = randomiseResponseCode([]int{200, 203, 500, 501, 502, 503, 504, 505})
+	writeResponse(w, resp, "random response from the server")
 }
 
 func error500(w http.ResponseWriter, req *http.Request) {
-	resp := randomise500ResponseCode(&http.Response{})
-	resp.Body = io.NopCloser(strings.NewReader("Error ~500"))
+	resp := &http.Response{}
+	resp.StatusCode = randomiseResponseCode([]int{500, 501, 502, 503, 504, 505})
+	writeResponse(w, resp, "Error ~500")
+}
 
-	log.Printf("response: %v ", resp.StatusCode)
+func pushHandler(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		PushURL string `json:"push_url"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err!=nil {
+		log.Println(err)
+		http.Error(w, "Invallid request body", http.StatusBadRequest)
+		return
+	}
+
+	if body.PushURL == "" {
+		http.Error(w, "push_url is missing from body", http.StatusBadRequest)
+		return
+	}
+	pushReg := prometheus.NewRegistry()
+	metric := promauto.With(pushReg).NewGauge(
+		prometheus.GaugeOpts{
+			Name: "my_sample_push_last_success_seconds",
+			Help: "Last successful push",
+	})
+	metric.SetToCurrentTime()
+
+	pusher := push.New(body.PushURL, "push-test").Gatherer(pushReg)
+	var err error
+
+	if (req.Method == http.MethodDelete) {
+		err = pusher.Delete()
+	} else if(req.Method == http.MethodPost)  {
+		err = pusher.Push()
+	} else {
+		log.Fatalf("[error] failed to process the request, check method, allowed POST or DELETE")
+	}
+
+	if err != nil {
+		log.Fatalf("[error] failed to process the request ")
+	}
+
+	writeResponse(w, &http.Response{StatusCode: http.StatusOK}, "Push operation sucessfully performed to url: "+body.PushURL)
+}
+
+
+func randomiseResponseCode(codes []int) int {
+	rn := rand.Intn(len(codes))
+	i := rn % len(codes)
+	return codes[i]
+}
+
+func writeResponse(w http.ResponseWriter, resp *http.Response, bodyContent string) {
+	resp.Body = io.NopCloser(strings.NewReader(bodyContent))
 	w.WriteHeader(resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)
 	_, err := w.Write(body)
 	if err != nil {
 		fmt.Printf("error while sending respone %v", err)
 	}
+
 	_ = resp.Body.Close()
-}
-
-func randomiseResponseCode(resp *http.Response) *http.Response {
-	codes := []int{200, 203, 500, 501, 502, 503, 504, 505}
-	rn := rand.Intn(len(codes))
-	i := rn % len(codes)
-	resp.StatusCode = codes[i]
-
-	return resp
-}
-
-
-func randomise500ResponseCode(resp *http.Response) *http.Response {
-	codes := []int{500, 501, 502, 503, 504, 505}
-	rn := rand.Intn(len(codes))
-	i := rn % len(codes)
-	resp.StatusCode = codes[i]
-	return resp
 }
