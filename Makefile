@@ -6,7 +6,7 @@ prom-up:
 prom-down:
 	docker compose -f compose/docker-compose.yaml down
 
-slog-gen:
+sloth-gen:
 	docker run --rm --name sloth -v=${PWD}/compose/sloth:/sloth ghcr.io/slok/sloth  generate -i /sloth/prom-sample-app.yaml -o /sloth/rules/prom-sample-app.yaml 
 
 .PHONY: k8s-local
