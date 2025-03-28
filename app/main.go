@@ -3,11 +3,10 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/client_golang/prometheus/push"
+	"github.com/rs/zerolog"
 )
 
 
@@ -45,7 +45,7 @@ var (
 var httpRequestCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
     Name: "http_requests_total",
     Help: "Total number of HTTP requests received",
-}, []string{"status", "path", "method"})
+}, []string{"status", "path", "method", "testing"})
 
 // Middleware to count HTTP requests
 func prometheusMiddleware(next http.Handler) http.Handler {
@@ -62,9 +62,12 @@ func prometheusMiddleware(next http.Handler) http.Handler {
         method := r.Method
         path := r.URL.Path // Path can be adjusted for aggregation (e.g., `/users/:id` → `/users/{id}`)
         status := strconv.Itoa(recorder.statusCode)
+		testing := strings.TrimSpace(r.URL.Query().Get("testing"))
+		testing = strings.ReplaceAll(testing, "\n", "")
+		testing = strings.ReplaceAll(testing, "\r", "")
 
         // Increment the counter
-        httpRequestCounter.WithLabelValues(status, path, method).Inc()
+        httpRequestCounter.WithLabelValues(status, path, method, testing).Inc()
     })
 }
 // Helper to capture HTTP status codes
@@ -73,6 +76,7 @@ type statusRecorder struct {
     statusCode int
 }
 
+var logger zerolog.Logger
 
 func (rec *statusRecorder) WriteHeader(code int) {
     rec.statusCode = code
@@ -81,7 +85,12 @@ func (rec *statusRecorder) WriteHeader(code int) {
 func main() {
 	
 	port := flag.String("port", "8080", "Port to run the HTTP server on")
+	logLevel := flag.Int("log-level", 0, "Log level for the application: -1:TRACE, 0:DEBUG, 1:INFO, 2:WARN, 3:ERROR, 4:FATA, 5:PANIC")
 	flag.Parse()
+
+	zerolog.SetGlobalLevel(zerolog.Level(*logLevel))
+	logger = zerolog.New(os.Stdout).With().Timestamp().Logger()
+
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(counter)
 	reg.MustRegister(gauge)
@@ -107,38 +116,44 @@ func main() {
 	mux.Handle("/metrics", handler)
 
 	promHandler := prometheusMiddleware(mux)
-	log.Println("Starting HTTP server on port", *port)
+	logger.Info().Msgf("Starting HTTP server on port: %s", *port)
 
 	// log.Fatalf("received error while serving. %v", http.ListenAndServe(":8090", mux))
 	if err := http.ListenAndServe(":"+*port, promHandler); err != nil {
-        log.Fatal("Server failed to start:", err)
+        logger.Fatal().Msgf("Server failed to start: %v", err)
     }
 }
 
 func randomResponse(w http.ResponseWriter, req *http.Request) {
-	// log.Println(("invoking root endpoing and returning random response"))
 	resp := &http.Response{}
-	resp.StatusCode = randomiseResponseCode([]int{200, 203, 500, 501, 502, 503, 504, 505})
+	resp.StatusCode = randomiseResponseCode([]int{200, 203, 204, 205, 206, 207, 401, 403, 404})
+	logger.Debug().Int("status", resp.StatusCode).Msg("invoking root endpoint and returning random response")
 	writeResponse(w, resp, "random response from the server")
 }
 
 func error500(w http.ResponseWriter, req *http.Request) {
 	resp := &http.Response{}
 	resp.StatusCode = randomiseResponseCode([]int{500, 501, 502, 503, 504, 505})
+	logger.Debug().Str("testing", req.URL.Query().Get("testing")).Int("status", resp.StatusCode).Msg("invoking e500 endpoint and returning random response")
 	writeResponse(w, resp, "Error ~500")
 }
 
 func pushHandler(w http.ResponseWriter, req *http.Request) {
 	var body struct {
 		PushURL string `json:"push_url"`
+		Username string `json:"user"`
+		Password string `json:"pass"`
 	}
 	if err := json.NewDecoder(req.Body).Decode(&body); err!=nil {
-		log.Println(err)
+		logger.Error().Msgf("invalid request body, got error: %v", err)
+		logger.Debug().Msgf("body %v", req.Body)
 		http.Error(w, "Invallid request body", http.StatusBadRequest)
 		return
 	}
+	logger.Debug().Msgf("invoking push endpoint and sending request to pg: %s", body.PushURL)
 
 	if body.PushURL == "" {
+		logger.Error().Msg("push_url is missing from body")
 		http.Error(w, "push_url is missing from body", http.StatusBadRequest)
 		return
 	}
@@ -151,21 +166,28 @@ func pushHandler(w http.ResponseWriter, req *http.Request) {
 	metric.SetToCurrentTime()
 
 	pusher := push.New(body.PushURL, "push-test").Gatherer(pushReg)
+	if body.Username != "" && body.Password != "" {
+		pusher.BasicAuth(body.Username, body.Password)
+	}
 	var err error
-
 	if (req.Method == http.MethodDelete) {
+		logger.Debug().Msg("calling pusher.delete on the request")
 		err = pusher.Delete()
 	} else if(req.Method == http.MethodPost)  {
+		logger.Debug().Msg("calling pusher.push on the request")
 		err = pusher.Push()
 	} else {
-		log.Fatalf("[error] failed to process the request, check method, allowed POST or DELETE")
+		logger.Error().Msg("failed to process the request, check method, allowed POST or DELETE")
 	}
 
 	if err != nil {
-		log.Fatalf("[error] failed to process the request ")
+		logger.Error().Msgf("failed to process the request with error: %v", err)
+		http.Error(w, "failed to process the request with error", http.StatusBadRequest)
+		return
 	}
 
-	writeResponse(w, &http.Response{StatusCode: http.StatusOK}, "Push operation sucessfully performed to url: "+body.PushURL)
+	writeResponse(w, &http.Response{StatusCode: http.StatusOK}, "push operation sucessfully performed to url: "+body.PushURL)
+	logger.Debug().Msgf("push operation sucessfully performed to url: %s", body.PushURL)
 }
 
 
@@ -181,8 +203,7 @@ func writeResponse(w http.ResponseWriter, resp *http.Response, bodyContent strin
 	body, _ := io.ReadAll(resp.Body)
 	_, err := w.Write(body)
 	if err != nil {
-		fmt.Printf("error while sending respone %v", err)
+		logger.Error().Msgf("error while sending respone: %v", err)
 	}
-
 	_ = resp.Body.Close()
 }
