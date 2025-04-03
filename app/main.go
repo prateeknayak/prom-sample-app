@@ -77,6 +77,7 @@ type statusRecorder struct {
 }
 
 var logger zerolog.Logger
+var insecure *bool
 
 func (rec *statusRecorder) WriteHeader(code int) {
     rec.statusCode = code
@@ -85,7 +86,8 @@ func (rec *statusRecorder) WriteHeader(code int) {
 func main() {
 	
 	port := flag.String("port", "8080", "Port to run the HTTP server on")
-	logLevel := flag.Int("log-level", 0, "Log level for the application: -1:TRACE, 0:DEBUG, 1:INFO, 2:WARN, 3:ERROR, 4:FATA, 5:PANIC")
+	logLevel := flag.Int("log-level", 1, "Log level for the application: -1:TRACE, 0:DEBUG, 1:INFO, 2:WARN, 3:ERROR, 4:FATA, 5:PANIC")
+	insecure = flag.Bool("push-insecure", false, "insecure connection to push endpoint")
 	flag.Parse()
 
 	zerolog.SetGlobalLevel(zerolog.Level(*logLevel))
