@@ -1,11 +1,13 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"io"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -160,18 +162,33 @@ func pushHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	pushReg := prometheus.NewRegistry()
+	var pushHost string;
+	parsedURL, err := url.Parse(body.PushURL)
+	if err != nil {
+		logger.Info().Msgf("unable to parse push url: %s", body.PushURL)
+		pushHost = body.PushURL;
+	} else {
+		pushHost = parsedURL.Host
+	}
 	metric := promauto.With(pushReg).NewGauge(
 		prometheus.GaugeOpts{
 			Name: "my_sample_push_last_success_seconds",
 			Help: "Last successful push",
+			ConstLabels: prometheus.Labels{"pushgateway": pushHost},
 	})
 	metric.SetToCurrentTime()
 
 	pusher := push.New(body.PushURL, "push-test").Gatherer(pushReg)
+	if *insecure {
+		pusher = pusher.Client(
+			&http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}})
+	}
 	if body.Username != "" && body.Password != "" {
 		pusher.BasicAuth(body.Username, body.Password)
 	}
-	var err error
 	if (req.Method == http.MethodDelete) {
 		logger.Debug().Msg("calling pusher.delete on the request")
 		err = pusher.Delete()
